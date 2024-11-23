@@ -9,4 +9,4 @@ This repository contains detailed reports and examples of web application vulner
 - **/tools**: Utility scripts or tools referenced in the vulnerabilities.
 
 ## Usage
-Navigate through the folders to explore detailed vulnerability reports and examples. Contributions are welcome—see [docs/Contributing.md](docs/Contributing.md).
+Navigate through the folders to explore detailed vulnerability reports and examples.
