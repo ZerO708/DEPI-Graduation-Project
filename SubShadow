@@ -1,0 +1,226 @@
+#!/bin/bash
+
+# Ultimate Subdomain Enumeration Script by Kareem Dawoud (All Tools, APIs, and Technologies)
+# Usage: ./subdomain_recon.sh -d <domain> [-l <domain-list.txt>] [-w <wordlist-dir>] [-p|-a|-b] [-t <threads>] [-o <output>] [-s] [-r] [-k]
+
+bold="\e[1m"
+Underlined="\e[4m"
+red="\e[31m"
+green="\e[32m"
+blue="\e[34m"
+end="\e[0m"
+VERSION="2025-01-28"
+
+PRG=${0##*/}
+
+# Function to display usage
+Usage() {
+  echo -e "${bold}${blue}Usage:${end} $PRG -d <domain> [-l <domain-list.txt>] [-w <wordlist-dir>] [-p|-a|-b] [-t <threads>] [-o <output>] [-s] [-r] [-k]"
+  echo -e "${bold}${blue}Options:${end}"
+  echo -e "  -d, --domain       Domain to enumerate"
+  echo -e "  -l, --list         List of domains"
+  echo -e "  -w, --wordlist     Directory containing wordlists"
+  echo -e "  -p, --passive      Passive recon only"
+  echo -e "  -a, --active       Active recon only"
+  echo -e "  -b, --both         Both passive and active recon (default)"
+  echo -e "  -t, --threads      Threads for parallel execution (default: 200)"
+  echo -e "  -o, --output       Output file to save results"
+  echo -e "  -s, --silent       Silent mode (only output found subdomains)"
+  echo -e "  -r, --resolve      Resolve subdomains to check live hosts"
+  echo -e "  -k, --keep         Keep temporary files"
+  echo -e "  -h, --help         Display this help message"
+  echo -e "  -v, --version      Display version information"
+  echo -e "${bold}${blue}Examples:${end}"
+  echo -e "  $PRG -d example.com -w /path/to/wordlists -b -t 200"
+  echo -e "  $PRG -l domains.txt -w /path/to/wordlists -a -o results.txt"
+  exit 1
+}
+
+# Parse arguments
+while getopts ":d:l:w:pabt:o:srkhv" opt; do
+  case $opt in
+    d) DOMAIN="$OPTARG"; MODE="single";;
+    l) DOMAIN_LIST="$OPTARG"; MODE="list";;
+    w) WORDLIST_DIR="$OPTARG";;
+    p) RECON_MODE="passive";;
+    a) RECON_MODE="active";;
+    b) RECON_MODE="both";;
+    t) THREADS="$OPTARG";;
+    o) OUTPUT_FILE="$OPTARG";;
+    s) SILENT=True;;
+    r) RESOLVE=True;;
+    k) KEEP_TMP=True;;
+    h) Usage;;
+    v) echo -e "${bold}${blue}Version:${end} $VERSION"; exit 0;;
+    *) echo -e "${red}[-] Unknown option: -$OPTARG${end}"; Usage;;
+  esac
+done
+
+# Set default values
+if [ -z "$THREADS" ]; then
+  THREADS=200
+fi
+if [ -z "$RECON_MODE" ]; then
+  RECON_MODE="both"
+fi
+
+# Set output directory
+OUTPUT_DIR="subdomain_recon_${DOMAIN:-$(basename $DOMAIN_LIST .txt)}"
+TOOLS_DIR="tools"
+mkdir -p $OUTPUT_DIR
+cd $OUTPUT_DIR
+
+# Function to check if a command exists
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+# List of required tools
+REQUIRED_TOOLS=(
+  "amass"
+  "subfinder"
+  "assetfinder"
+  "findomain"
+  "knockpy"
+  "crobat"
+  "ctfr"
+  "cloudfail"
+  "waybackurls"
+  "massdns"
+  "gobuster"
+  "subbrute"
+  "dnsx"
+  "shuffledns"
+  "aquatone"
+  "lepus"
+  "arjun"
+  "gospider"
+  "haktrails"
+  "sudomy"
+  "lazyrecon"
+  "reconftw"
+  "osmedeus"
+  "parallel"
+  "redis-cli"
+)
+
+# Function to install required tools
+install_tools() {
+  echo -e "${bold}[+] Checking and installing required tools...${end}"
+  for tool in "${REQUIRED_TOOLS[@]}"; do
+    if ! command_exists "$tool"; then
+      echo -e "${bold}[+] Installing $tool...${end}"
+      case $tool in
+        amass) sudo snap install amass;;
+        subfinder) go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest;;
+        assetfinder) go install github.com/tomnomnom/assetfinder@latest;;
+        findomain) curl -LO https://github.com/findomain/findomain/releases/latest/download/findomain-linux && chmod +x findomain-linux && sudo mv findomain-linux /usr/local/bin/findomain;;
+        knockpy) pip3 install knockpy;;
+        crobat) go install github.com/cgboal/sonarsearch/cmd/crobat@latest;;
+        ctfr) git clone https://github.com/UnaPibaGeek/ctfr.git $TOOLS_DIR/ctfr && pip3 install -r $TOOLS_DIR/ctfr/requirements.txt;;
+        cloudfail) git clone https://github.com/m0rtem/CloudFail.git $TOOLS_DIR/cloudfail && pip3 install -r $TOOLS_DIR/cloudfail/requirements.txt;;
+        waybackurls) go install github.com/tomnomnom/waybackurls@latest;;
+        massdns) git clone https://github.com/blechschmidt/massdns.git $TOOLS_DIR/massdns && cd $TOOLS_DIR/massdns && make && sudo make install && cd -;;
+        gobuster) go install github.com/OJ/gobuster/v3@latest;;
+        subbrute) git clone https://github.com/TheRook/subbrute.git $TOOLS_DIR/subbrute;;
+        dnsx) go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest;;
+        shuffledns) go install github.com/projectdiscovery/shuffledns/cmd/shuffledns@latest;;
+        aquatone) go install github.com/michenriksen/aquatone@latest;;
+        lepus) git clone https://github.com/NoF0rte/lepus.git $TOOLS_DIR/lepus && pip3 install -r $TOOLS_DIR/lepus/requirements.txt;;
+        arjun) git clone https://github.com/s0md3v/Arjun.git $TOOLS_DIR/arjun && pip3 install -r $TOOLS_DIR/arjun/requirements.txt;;
+        gospider) go install github.com/jaeles-project/gospider@latest;;
+        haktrails) go install github.com/hakluke/haktrails@latest;;
+        sudomy) git clone https://github.com/Screetsec/Sudomy.git $TOOLS_DIR/sudomy && pip3 install -r $TOOLS_DIR/sudomy/requirements.txt;;
+        lazyrecon) git clone https://github.com/nahamsec/lazyrecon.git $TOOLS_DIR/lazyrecon;;
+        reconftw) git clone https://github.com/six2dez/reconftw.git $TOOLS_DIR/reconftw && bash $TOOLS_DIR/reconftw/install.sh;;
+        osmedeus) git clone https://github.com/j3ssie/Osmedeus.git $TOOLS_DIR/osmedeus && bash $TOOLS_DIR/osmedeus/install.sh;;
+        parallel) sudo apt-get install parallel;;
+        redis-cli) sudo apt-get install redis;;
+      esac
+    fi
+  done
+  echo -e "${bold}[+] Tool installation check completed.${end}"
+}
+
+# Function to run passive recon
+run_passive_recon() {
+  echo -e "${bold}[+] Starting passive subdomain enumeration...${end}"
+
+  if [ "$MODE" == "single" ]; then
+    # Run all passive tools in parallel
+    parallel --will-cite -j $THREADS ::: \
+      "subfinder -d $DOMAIN -o subfinderSubdomains.txt -t $THREADS" \
+      "amass enum -passive -d $DOMAIN -o amassSubdomains.txt" \
+      "assetfinder -subs-only $DOMAIN | tee assetfinderSubdomains.txt" \
+      "findomain --quiet -t $DOMAIN | anew findomainSubdomains.txt" \
+      "knockpy $DOMAIN -o knockpySubdomains.txt" \
+      "crobat -s $DOMAIN | anew crobatSubdomains.txt" \
+      "python3 $TOOLS_DIR/ctfr/ctfr.py -d $DOMAIN -o ctfrSubdomains.txt" \
+      "python3 $TOOLS_DIR/cloudfail/cloudfail.py --target $DOMAIN --output cloudfailSubdomains.txt" \
+      "echo $DOMAIN | waybackurls | unfurl -u domains | anew unfurlSubdomains1.txt" \
+      "gau --subs $DOMAIN | unfurl -u domains | anew unfurlSubdomains2.txt" \
+      "python3 $TOOLS_DIR/dorks_hunter/dorks_hunter.py -d $DOMAIN | anew dorksHunterSubdomains.txt" \
+      "curl -s 'https://api.securitytrails.com/v1/domain/$DOMAIN/subdomains' -H 'APIKEY: YOUR_API_KEY' | jq -r '.subdomains[]' | awk '{print \$0\".$DOMAIN\"}' | anew securityTrailsSubdomains.txt" \
+      "shodan host $DOMAIN | grep -oP '[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' | anew shodanSubdomains.txt"
+  fi
+
+  echo -e "${bold}[+] Passive recon completed!${end}"
+}
+
+# Function to run active recon
+run_active_recon() {
+  echo -e "${bold}[+] Starting active subdomain enumeration...${end}"
+
+  if [ "$MODE" == "single" ]; then
+    # Run all active tools in parallel
+    parallel --will-cite -j $THREADS ::: \
+      "subbrute $DOMAIN -w $WORDLIST_DIR/subdomains_wordlist.txt -o subbruteSubdomains.txt" \
+      "$TOOLS_DIR/massdns/scripts/subbrute.py $DOMAIN $WORDLIST_DIR/subdomains-top1million-110000.txt | massdns -r $WORDLIST_DIR/resolvers.txt -t A -o S -w massdnsSubdomains.txt" \
+      "puredns bruteforce $WORDLIST_DIR/subdomains_wordlist.txt $DOMAIN $WORDLIST_DIR/resolvers.txt | anew purednsSubdomains.txt" \
+      "gobuster dns -d $DOMAIN -t $THREADS -w $WORDLIST_DIR/subdomains_wordlist.txt -q -o gobusterSubdomains.txt" \
+      "ffuf -u 'https://FUZZ.$DOMAIN' -w $WORDLIST_DIR/subdomains_wordlist.txt -mc 200,403,404,302,301 -t $THREADS | anew ffufSubdomains.txt" \
+      "ffuf -u https://$DOMAIN -H 'Host: FUZZ.$DOMAIN' -w $WORDLIST_DIR/subdomains-top1million-110000.txt -t $THREADS -fc 403 | tee ffufSubdomainsInitial.txt"
+  fi
+
+  echo -e "${bold}[+] Active recon completed!${end}"
+}
+
+# Main function
+main() {
+  # Check if all tools are installed
+  if all_tools_installed; then
+    echo -e "${bold}[+] All tools are already installed. Skipping installation.${end}"
+  else
+    install_tools
+  fi
+
+  # Run recon based on mode
+  if [ "$RECON_MODE" == "passive" ]; then
+    run_passive_recon
+  elif [ "$RECON_MODE" == "active" ]; then
+    run_active_recon
+  elif [ "$RECON_MODE" == "both" ]; then
+    run_passive_recon &
+    run_active_recon &
+    wait
+  fi
+
+  # Combine and validate results
+  echo -e "${bold}[+] Combining results...${end}"
+  cat *.txt 2>/dev/null | sort -u > all_subdomains.txt
+
+  # Resolve live subdomains if requested
+  if [ "$RESOLVE" == True ]; then
+    echo -e "${bold}[+] Probing for live subdomains with HTTPX...${end}"
+    httpx -l all_subdomains.txt -o live_subdomains.txt -t $THREADS
+  fi
+
+  # Clean up temporary files unless --keep is specified
+  if [ "$KEEP_TMP" != True ]; then
+    rm -f tmp-*
+  fi
+
+  echo -e "${bold}[+] Subdomain enumeration completed! Results saved in $OUTPUT_DIR/${end}"
+}
+
+main
